@@ -283,6 +283,8 @@ protected:
 	int m_debug;
 	int m_nightHoursStart;
 	int m_nightHoursEnd;
+	int m_antiFloodSeconds;
+	time_t m_lastMessageTime;
 	bool m_bAttachedPush;
 	bool m_bSkipMessageContent;
 	bool m_bAwayOnlyPush;
@@ -297,6 +299,8 @@ public:
 		m_idleAfterMinutes=0;
 		m_nightHoursStart=-1;
 		m_nightHoursEnd=-1;
+		m_antiFloodSeconds=-1;
+		m_lastMessageTime=0;
 		m_debug=0;
 
 		LoadRegistry();
@@ -340,6 +344,8 @@ public:
 				m_nightHoursStart = it->second.ToInt();
 			} else if (it->first == "u:nighthoursend") {
 				m_nightHoursEnd = it->second.ToInt();
+			} else if (it->first == "u:antifloodseconds") {
+				m_antiFloodSeconds = it->second.ToInt();
 			} else if (it->first == "u:debug") {
 				m_debug = it->second.ToInt();
 			}
@@ -542,6 +548,8 @@ public:
 			PutModule("  Don't send notifications after nighthours start and before nighthours end.");
 			PutModule("Command: SET ignorenetworkservices 0|1");
 			PutModule("  Enable this to stop receiving notifications from IRC services.");
+			PutModule("Command: SET antiflood <seconds>");
+			PutModule("  Don't send multiple notifications within the given amount of seconds to prevent flooding.");
 		} else if (sCommand.Equals("LIST")) {
 			if (m_mspDevices.empty()) {
 				PutModule("You have no saved devices...");
@@ -609,6 +617,9 @@ public:
 				m_nightHoursStart=hoursToInt(sCommand.Token(2));
 				m_nightHoursEnd=hoursToInt(sCommand.Token(3));
 				PutModule("Night Hours: "+intToHours(m_nightHoursStart)+" - "+intToHours(m_nightHoursEnd));
+			} else if (sKey == "antiflood") {
+				m_antiFloodSeconds=sCommand.Token(2).ToInt();
+				PutModule("Anti Flood: '"+CString(m_antiFloodSeconds)+"'");
 			} else {
 				PutModule("Unknown setting. Try HELP.");
 			}
@@ -622,6 +633,7 @@ public:
 			SetNV("u:debug", CString(m_debug), false);
 			SetNV("u:nighthoursstart", CString(m_nightHoursStart), false);
 			SetNV("u:nighthoursend", CString(m_nightHoursEnd), false);
+			SetNV("u:antifloodseconds", CString(m_antiFloodSeconds), false);
 		} else if (sCommand.Token(0).Equals("STATUS")) {
 			CTable Table;
 			Table.AddColumn("Option");
@@ -653,6 +665,10 @@ public:
 			Table.AddRow();
 			Table.SetCell("Option","Ignore network services");
 			Table.SetCell("Value",CString(m_bIgnoreNetworkServices));
+
+			Table.AddRow();
+			Table.SetCell("Option","Anti Flood Interval (seconds)");
+			Table.SetCell("Value",CString(m_antiFloodSeconds));
 
 			PutModule("  Current Status");
 			PutModule(Table);
@@ -748,7 +764,6 @@ public:
 			return false;
 		}
 
-
 		//Check idleTimer
 		bool bIsNotIdle = false;
 		// only check idle time if someone is attached
@@ -758,6 +773,12 @@ public:
 		if (bIsNotIdle) {
 			return false;
 		}
+
+		// Anti-flood
+		if (time(NULL) < m_lastMessageTime + m_antiFloodSeconds) {
+			return false;
+		}
+		m_lastMessageTime = time(NULL);
 
 		bool bRet = true;
 		vector<CClient*>& vpClients = m_pUser->GetClients();
