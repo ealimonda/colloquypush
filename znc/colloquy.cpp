@@ -21,6 +21,7 @@ public:
 				m_uPort = 0;
 				m_bNew = false;
 				m_uFlags = 0;
+				m_lastMessageTime = 0;
 	}
 
 	virtual ~CDevice() {}
@@ -120,6 +121,7 @@ public:
 		pSock->Write(sPayload);
 		pSock->Close(Csock::CLT_AFTERWRITE);
 		m_Parent.AddSocket(pSock);
+		m_lastMessageTime = time(NULL);
 
 		return true;
 	}
@@ -220,6 +222,7 @@ public:
 	CString GetHost() const { return m_sHost; }
 	unsigned short GetPort() const { return m_uPort; }
 	bool IsNew() const { return m_bNew; }
+	time_t LastMessageTime() const { return m_lastMessageTime; }
 
 	// Setters
 	void SetToken(const CString& s) { m_sToken = s; }
@@ -273,6 +276,7 @@ private:
 	CString        m_sHost;
 	unsigned short m_uPort;
 	unsigned int   m_uFlags;
+	time_t         m_lastMessageTime;
 };
 
 
@@ -284,7 +288,6 @@ protected:
 	int m_nightHoursStart;
 	int m_nightHoursEnd;
 	int m_antiFloodSeconds;
-	time_t m_lastMessageTime;
 	bool m_bAttachedPush;
 	bool m_bSkipMessageContent;
 	bool m_bAwayOnlyPush;
@@ -300,7 +303,6 @@ public:
 		m_nightHoursStart=-1;
 		m_nightHoursEnd=-1;
 		m_antiFloodSeconds=-1;
-		m_lastMessageTime=0;
 		m_debug=0;
 
 		LoadRegistry();
@@ -774,12 +776,6 @@ public:
 			return false;
 		}
 
-		// Anti-flood
-		if (time(NULL) < m_lastMessageTime + m_antiFloodSeconds) {
-			return false;
-		}
-		m_lastMessageTime = time(NULL);
-
 		bool bRet = true;
 		vector<CClient*>& vpClients = m_pUser->GetClients();
 
@@ -826,6 +822,11 @@ public:
 				} else if (m_bSkipMessageContent) {
 					sPushMessage = "Highlighted message";
 				}
+			}
+
+			// Anti-flood
+			if (time(NULL) < pDevice->LastMessageTime() + m_antiFloodSeconds) {
+				return false;
 			}
 
 			if (m_debug) {
